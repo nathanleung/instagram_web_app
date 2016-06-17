@@ -24,23 +24,15 @@ var clientSecret = "0c38865cbd06460a9f0c16e079975541";
 var redirectURL = "http://localhost:8081/instagram/index.html";
 var access_code_url = "https://api.instagram.com";
 var path_endpoint = "/oauth/access_token";
+var access_token = "24349635.1677ed0.6bac278693a2406e94e3ab182d1dba5f";
 //what does this do?
 app.use(express.static('public'));
 
 app.get('/index.html', function(req, res){
 	// res.sendFile(__dirname + "/" + "index.html");
-	res.redirect("https://api.instagram.com/oauth/authorize/?client_id="+clientID+"&redirect_uri="+redirectURL+"&response_type=code");
+	res.redirect("https://api.instagram.com/oauth/authorize/?client_id="+clientID+"&redirect_uri="+redirectURL+"&response_type=code&scope=public_content");
 });
 
-app.get('/process_get', function(req, res){
-	//prepare output in JSON
-	response = {
-		first_name:req.query.first_name,
-		last_name:req.query.last_name
-	};
-	console.log(response);
-	res.end(JSON.stringify(response));
-});
 function getToken(code, instaResponse){
 	var instaR = instaResponse;
 	var post_data = querystring.stringify({
@@ -75,7 +67,8 @@ function getToken(code, instaResponse){
 			// res.write(body);
 			// console.log(body);
 			result = JSON.parse(body);
-			instaR.send(result);
+			access_token = result.access_token;
+			instaR.sendFile(__dirname + "/instagram/" + "index.html");
 		});
 		res.on('error', function(err) {
         	console.log(err);
@@ -85,6 +78,7 @@ function getToken(code, instaResponse){
 	post_req.write(post_data);
 	post_req.end();
 }
+
 app.get('/instagram/index.html', function(req, res){
 	//if successful get then post
 	var code = req.query.code;
@@ -93,16 +87,49 @@ app.get('/instagram/index.html', function(req, res){
 	// res.sendFile(__dirname + "/" + "index.html");
 });
 
-//Post
-app.post('/process_post', urlencodedParser, function(req, res){
+function makeRequestByTag(tagName, response){
+	var instaR = response;
+	var rightNow = Date.now();
+	var minusTwoDays = -(2*24*60*60*1000);
+	var twoDaysAgo = rightNow+minusTwoDays;
+	var get_data = querystring.stringify({
+		access_token: access_token,
+		// min_tag_id: twoDaysAgo,
+		// max_tag_id: rightNow
+	});
+	var get_options = {
+		hostname: parseURL(access_code_url).hostname,
+		port: 443,
+		method: 'GET',
+		path: "/v1/tags/"+tagName+"/media/recent?"+get_data
+	};
+	var get_req = https.request(get_options, function(res){
+		res.setEncoding('utf8');
+		var body = '';
+		console.log(res.statusCode +": " + res.statusMessage);
+		res.on('data', function(chunk){
+			console.log(res.statusCode +": " + res.statusMessage);
+			console.log(chunk);
+			body += chunk;
+		});
+		res.on('end', function(){
+			console.log(res.statusCode +": " + res.statusMessage);
+			console.log(body);
+			instaR.end(body);
+		});
+	});
+	get_req.end();
+}
+app.get('/process_get', function(req, res){
 
    // Prepare output in JSON format
    response = {
-       first_name:req.body.first_name,
-       last_name:req.body.last_name
+       tag:req.query.tag,
+       date:req.query.date
    };
    console.log(response);
-   res.end(JSON.stringify(response));
+   makeRequestByTag(response.tag, res);
+   // res.end(JSON.stringify(response));
 });
 
 var server = app.listen(8081, function () {
